@@ -144,7 +144,7 @@ namespace oop
 			clean();			
 		}
 
-		void next_page(const char* filename, HANDLE file) const
+		void flip_to_next_page(const char* filename, HANDLE file) const
 		{
 			static std::mutex mutex;
 			std::lock_guard<std::mutex> lock(mutex);
