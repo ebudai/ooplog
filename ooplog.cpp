@@ -1,9 +1,6 @@
-// ooplog.cpp : Defines the entry point for the application.
-//
-
+//copyright Eric Budai 2017
 #include <windows.h>
 #include "ooplog.h"
-
 
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
                      _In_opt_ HINSTANCE hPrevInstance,

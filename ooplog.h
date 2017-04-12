@@ -1,3 +1,4 @@
+//copyright Eric Budai 2017
 #pragma once
 
 #include "interprocess.h"
@@ -10,7 +11,7 @@
 
 namespace oop
 {
-	//template <typename T>
+	//template <typename T = void>
 	struct log
 	{
 		using clock = std::chrono::high_resolution_clock;
@@ -19,19 +20,18 @@ namespace oop
 
 		log(const char* filename = make_name("ooplog", GetCurrentProcessId(), ".binlog"))
 			: filename(filename)
-			, file(CreateFileA(filename, GENERIC_READ | GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr))
+			, file(CreateFileA(filename, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr))
 			, messages(0, filename, file)
 			, strings(0, filename, file)
 		{ }
 
 		~log() { CloseHandle(file); }
 
-		//todo timing as first parameter
-		template <typename... Args> __forceinline void fatal(Args&&... args) const { write_fatal_message({ clock::now(), std::forward<Args>(args)..., newline{} }); }
-		template <typename... Args> __forceinline void info(Args&&... args) const { write_info_message({ clock::now(), std::forward<Args>(args)..., newline{} }); }
-		template <typename... Args> __forceinline void warn(Args&&... args) const { write_warn_message({ clock::now(), std::forward<Args>(args)..., newline{} }); }
-		template <typename... Args> __forceinline void debug(Args&&... args) const { write_debug_message({ clock::now(), std::forward<Args>(args)..., newline{} }); }
-		template <typename... Args> __forceinline void trace(Args&&... args) const { write_trace_message({ clock::now(), std::forward<Args>(args)..., newline{} }); }
+		template <typename... Args> __forceinline void fatal(Args&&... args) { write_fatal_message({ clock::now(), std::forward<Args>(args)..., newline{} }); }
+		template <typename... Args> __forceinline void info(Args&&... args) { write_info_message({ clock::now(), std::forward<Args>(args)..., newline{} }); }
+		template <typename... Args> __forceinline void warn(Args&&... args) { write_warn_message({ clock::now(), std::forward<Args>(args)..., newline{} }); }
+		template <typename... Args> __forceinline void debug(Args&&... args) { write_debug_message({ clock::now(), std::forward<Args>(args)..., newline{} }); }
+		template <typename... Args> __forceinline void trace(Args&&... args) { write_trace_message({ clock::now(), std::forward<Args>(args)..., newline{} }); }
 
 		static void set_level(level level)
 		{
@@ -43,6 +43,7 @@ namespace oop
 				case level::warn:	enable(level::warn);
 				case level::info:	enable(level::info);
 				case level::fatal:	enable(level::fatal);
+				default:			break;
 			}
 
 			switch (level)
@@ -52,6 +53,7 @@ namespace oop
 				case level::info:	disable(level::warn);
 				case level::warn:	disable(level::debug);
 				case level::debug:	disable(level::trace);
+				default:			break;
 			}
 		}
 
@@ -62,13 +64,13 @@ namespace oop
 		using arg = std::variant<newline, uint8_t, int8_t, uint16_t, int16_t, uint32_t, int32_t, uint64_t, int64_t, float, double, const char*, std::chrono::microseconds>;
 		using arglist = std::initializer_list<arg>;
 
-		__declspec(noinline) void write_fatal_message(arglist&& args) const { write(std::move(args)); }
-		__declspec(noinline) void write_info_message(arglist&& args) const { write(std::move(args)); }
-		__declspec(noinline) void write_warn_message(arglist&& args) const { write(std::move(args)); }
-		__declspec(noinline) void write_debug_message(arglist&& args) const { write(std::move(args)); }
-		__declspec(noinline) void write_trace_message(arglist&& args) const { write(std::move(args)); }
+		__declspec(noinline) void write_fatal_message(arglist&& args) { write(std::move(args)); }
+		__declspec(noinline) void write_info_message(arglist&& args) { write(std::move(args)); }
+		__declspec(noinline) void write_warn_message(arglist&& args) { write(std::move(args)); }
+		__declspec(noinline) void write_debug_message(arglist&& args) { write(std::move(args)); }
+		__declspec(noinline) void write_trace_message(arglist&& args) { write(std::move(args)); }
 
-		__forceinline void write(arglist&& args) const
+		__forceinline void write(arglist&& args)
 		{
 			write_strings(args);
 			auto size = args.size() * sizeof(arg);
@@ -76,14 +78,14 @@ namespace oop
 			messages.write(reinterpret_cast<const uint8_t*>(args.begin()), size);
 		}
 
-		__forceinline void write_strings(arglist& args) const
+		__forceinline void write_strings(arglist& args)
 		{
 			const auto stringcopy = [this](auto& string) { copy_to_strings_page_and_update_pointer_if_string(string); };
 			for (auto& arg : args) std::visit(stringcopy, arg);
 		}
 
-		template <typename T> __forceinline void copy_to_strings_page_and_update_pointer_if_string(T& value) const { }
-		template <> __forceinline void copy_to_strings_page_and_update_pointer_if_string<const char*>(const char*& string) const
+		template <typename T> __forceinline void copy_to_strings_page_and_update_pointer_if_string(T& value) { }
+		template <> __forceinline void copy_to_strings_page_and_update_pointer_if_string<const char*>(const char*& string)
 		{
 			auto length = std::strlen(string);
 			if (strings.free_space() < length) strings.flip_to_next_page(filename.data(), file);
@@ -93,13 +95,13 @@ namespace oop
 
 		static void enable(level level) 
 		{
-			auto get_first_byte = [](void(log::*function)(arglist&&) const)
+			auto get_first_byte = [](void(log::*function)(arglist&&))
 			{
 				auto address = reinterpret_cast<uint8_t*&>(function);
 				return address[0];
 			};
 
-			auto restore_first_byte = [](void(log::*function)(arglist&&) const, uint8_t byte)
+			auto restore_first_byte = [](void(log::*function)(arglist&&), uint8_t byte)
 			{
 				auto address = reinterpret_cast<uint8_t*&>(function);
 				
@@ -126,12 +128,13 @@ namespace oop
 				case level::warn:	restore_first_byte(&write_warn_message, warn_code);		break;
 				case level::debug:	restore_first_byte(&write_debug_message, debug_code);	break;
 				case level::trace:	restore_first_byte(&write_trace_message, trace_code);	break;
+				default:																	break;
 			}
 		}
 
 		static void disable(level level)
 		{
-			auto clear_first_byte = [](void(log::*function)(arglist&&) const)
+			auto clear_first_byte = [](void(log::*function)(arglist&&))
 			{
 				auto address = reinterpret_cast<uint8_t*&>(function);
 
@@ -154,9 +157,7 @@ namespace oop
 				case level::trace:	clear_first_byte(&write_trace_message);	break;
 			}
 		}
-		
-		
-		static void disable(level level) { }
+
 		std::string filename;
 
 		page messages;
