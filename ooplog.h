@@ -11,11 +11,11 @@ namespace spry
 {
 	struct page
 	{
-		enum { pagesize = 1 << 14 };
+		enum { pagesize = 1 << 16 };
 
-		page() : base(nullptr), mapping_object(INVALID_HANDLE_VALUE) { }
-
-		void initialize(const char* filename, HANDLE file_handle)
+		page(const char* filename, HANDLE file_handle) 
+			: base(nullptr)
+			, mapping_object(INVALID_HANDLE_VALUE)
 		{
 			mapping_object = CreateFileMappingA(file_handle, nullptr, PAGE_READWRITE, 0, pagesize, nullptr);
 			if (mapping_object == INVALID_HANDLE_VALUE) throw std::exception("CreateFileMapping", GetLastError());
@@ -36,7 +36,7 @@ namespace spry
 
 		uint64_t free_space() const { return pagesize - offset; }
 
-		uint8_t* write(const uint8_t* buffer, uint32_t buffer_size_in_bytes)
+		uint8_t* write(const uint8_t* buffer, size_t buffer_size_in_bytes)
 		{
 			auto start = base + offset;
 			std::memcpy(start, buffer, buffer_size_in_bytes);
@@ -59,24 +59,22 @@ namespace spry
 		}
 
 		uint8_t* base;
-		HANDLE mapping_object;
-		uint32_t offset;
+		uint64_t offset;
+		HANDLE mapping_object;		
 	};
 
-	template <typename name = void>
 	struct log
 	{
 		using clock = std::chrono::high_resolution_clock;
 
 		enum class level { none, fatal, info, warn, debug, trace };
 
-		log(const char* filename = "~spry.binlog")
+		log(const char* filename = "spry.binlog")
 			: filename(filename)
 			, file(INVALID_HANDLE_VALUE) 
 		{
-			file = CreateFileA(filename, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_HIDDEN, nullptr);
-			messages.initialize(filename, file);
-			strings.initialize(filename, file);
+			file = CreateFileA(filename, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+			if (file == INVALID_HANDLE_VALUE) throw std::exception("CreateFile", GetLastError());
 		}
 
 		~log() { CloseHandle(file); }
@@ -115,7 +113,7 @@ namespace spry
 
 		class newline { };
 
-		using arg = std::variant<newline, std::chrono::microseconds, const char*, uint8_t, int8_t, uint16_t, int16_t, uint32_t, int32_t, uint64_t, int64_t, float, double>;
+		using arg = std::variant<newline, std::chrono::steady_clock::time_point, const char*, uint8_t, int8_t, uint16_t, int16_t, uint32_t, int32_t, uint64_t, int64_t, float, double>;
 		using arglist = std::initializer_list<arg>;
 
 		__declspec(noinline) void write_fatal_message(arglist&& args) { write(std::move(args)); }
@@ -126,6 +124,7 @@ namespace spry
 
 		__forceinline void write(arglist&& args)
 		{
+			static thread_local page messages{ filename.data(), file };
 			write_strings(args);
 			auto size = args.size() * sizeof(arg);
 			if (messages.free_space() < size) messages.flip_to_next_page(filename.data());
@@ -134,20 +133,21 @@ namespace spry
 
 		__forceinline void write_strings(arglist& args)
 		{
-			const auto stringcopy = [this](auto& string) { write_to_string_page(string); };
+			const auto stringcopy = [this](const auto& string) { write_to_string_page(string); };
 			for (auto& arg : args) std::visit(stringcopy, arg);
 		}
 
-		template <typename T> __forceinline void write_to_string_page(T& value) { }
-		template <> __forceinline void write_to_string_page<const char*>(const char*& string)
+		template <typename T> __forceinline void write_to_string_page(const T& value) { }
+		template <> __forceinline void write_to_string_page<const char*&>(const char*& string)
 		{
+			static thread_local page strings{ filename.data(), file };
 			auto length = std::strlen(string);
 			if (strings.free_space() < length) strings.flip_to_next_page(filename.data());
 			auto pointer = strings.write(reinterpret_cast<const uint8_t*>(string), std::strlen(string));
 			string = reinterpret_cast<const char*>(pointer);
 		}
 
-		static void enable(level level) 
+		static void enable(level level)
 		{
 			auto get_first_byte = [](void(log::*function)(arglist&&))
 			{
@@ -214,10 +214,5 @@ namespace spry
 
 		std::string filename;
 		HANDLE file;
-		static thread_local page messages;
-		static thread_local page strings;	
 	};
-
-	template <typename name> thread_local page log<name>::messages{};
-	template <typename name> thread_local page log<name>::strings{};
 }
