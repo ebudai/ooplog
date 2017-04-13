@@ -21,7 +21,6 @@ namespace oop
 	}
 	template <typename... Components> static const char* make_name(std::string component, Components&&... components)
 	{
-		make_name(3);
 		component += make_name(std::forward<Components>(components)...);
 		return component.data();
 	}
@@ -30,57 +29,26 @@ namespace oop
 	template <typename T>
 	struct shared
 	{
-		shared() = default;
+		shared() : pointer(nullptr), mapping_object_handle(INVALID_HANDLE_VALUE), file_handle(INVALID_HANDLE_VALUE) { }
 
-		explicit shared(const char* const name) : pointer(nullptr)
+		explicit shared(const char* name) : shared()
 		{
-			constexpr SECURITY_ATTRIBUTES* security_attributes = nullptr;
-			constexpr auto protection = PAGE_READWRITE;
-			constexpr DWORD size_high = 0;
-			auto size_low = static_cast<DWORD>(sizeof(T));
-
-			object = CreateFileMappingA(INVALID_HANDLE_VALUE, security_attributes, protection, size_high, size_low, name);
-			if (!object) throw std::exception("CreateFileMapping", GetLastError());
-
-			connect();
+			reseat(name);
 		}
-
-		shared(const shared& other)
-		{
-			UnmapViewOfFile(pointer);
-
-			auto success = DuplicateHandle(GetCurrentProcess(), other.object, GetCurrentProcess(), &object, 0, FALSE, DUPLICATE_SAME_ACCESS);
-			if (!success) throw std::exception("DuplicateHandle", GetLastError());
-
-			connect();
-		}
-
-		shared(shared&& other)
-		{
-			auto handle = InterlockedExchangePointer(&object, other.object);
-			InterlockedExchangePointer(&other.object, handle);
-		}
-
+		
 		~shared()
 		{
 			UnmapViewOfFile(pointer);
 			CloseHandle(object);
 		}
 
-		shared& operator=(const shared& other)
-		{
-			UnmapViewOfFile(pointer);
-
-			auto success = DuplicateHandle(GetCurrentProcess(), other.object, GetCurrentProcess(), &object, 0, FALSE, DUPLICATE_SAME_ACCESS);
-			if (!success) throw std::exception("DuplicateHandle", GetLastError());
-
-			connect();
-		};
-
+		shared(const shared& other) : pointer(other.pointer) { copy(other); }
+		shared(shared&& other) : pointer(other.pointer) { std::swap(mapping_object_handle, other.mapping_object_handle); }
+		shared& operator=(const shared& other) { copy(other); }
 		shared& operator=(shared&& other)
 		{
-			auto handle = InterlockedExchangePointer(&object, other.object);
-			InterlockedExchangePointer(&other.object, handle);
+			std::swap(pointer, other.pointer);
+			std::swap(mapping_object_handle, other.mapping_object_handle);
 		}
 
 		T& operator*() { return *pointer; }
@@ -92,82 +60,85 @@ namespace oop
 		T* get() { return pointer; }
 		const T* get() const { return pointer; }
 
+		void reseat(const char* name)
+		{
+			UnmapViewOfFile(pointer);
+			CloseHandle(object);
+
+			constexpr SECURITY_ATTRIBUTES* security_attributes = nullptr;
+			constexpr auto protection = PAGE_READWRITE;
+			constexpr DWORD size_high = sizeof(T) >> 32;
+			DWORD size_low = sizeof(T);
+
+			object = CreateFileMappingA(INVALID_HANDLE_VALUE, security_attributes, protection, size_high, size_low, name);
+			if (!object) throw std::exception("CreateFileMapping", GetLastError());
+
+			pointer = reinterpret_cast<T*>(MapViewOfFile(mapping_object_handle, FILE_MAP_ALL_ACCESS, 0, 0, 0));
+		}
+
 	private:
 
-		void connect()
+		inline void copy(const shared& other)
 		{
-			auto void_pointer = reinterpret_cast<void*>(pointer);
-			auto new_pointer = MapViewOfFile(object, FILE_MAP_ALL_ACCESS, 0, 0, 0);
-			InterlockedExchangePointer(&void_pointer, new_pointer);
+			auto success = DuplicateHandle(GetCurrentProcess(), other.mapping_object_handle, GetCurrentProcess(), &mapping_object_handle, 0, FALSE, DUPLICATE_SAME_ACCESS);
+			if (!success) throw std::exception("DuplicateHandle", GetLastError());
 		}
 
 		T* pointer;
-		HANDLE object;
+		HANDLE mapping_object_handle;
 	};
 
 	struct page
 	{
-		enum { pagesize = 1 << 23 };
+		enum { pagesize = 1 << 14 };
 
-		page(uint64_t id, const char* filename, HANDLE file)
-			: page_id(id)
-			, mapping(INVALID_HANDLE_VALUE)
-			, reference_count(make_name("refcount", id, filename))
-			, offset(make_name("offset", id, filename))
+		page() : base(nullptr), mapping_object(INVALID_HANDLE_VALUE) { }
+
+		void initialize(const char* filename, HANDLE file_handle)
 		{
-			InterlockedAdd(reference_count.get(), 1);
-			change_page(filename, file);
+			mapping_object = CreateFileMappingA(file_handle, nullptr, PAGE_READWRITE, 0, pagesize, nullptr);
+			if (mapping_object == INVALID_HANDLE_VALUE) throw std::exception("CreateFileMapping", GetLastError());
+			flip_to_next_page(filename);
 		}
 
 		~page()
 		{
 			UnmapViewOfFile(base);
-			CloseHandle(mapping);
-			InterlockedAdd(reference_count.get(), -1);
+			CloseHandle(mapping_object);
 		}
 
-		void flip_to_next_page(const char* filename, HANDLE file)
+		void flip_to_next_page(const char* filename)
 		{
-			//todo not threadsafe
-			//todo refcount fucked
 			UnmapViewOfFile(base);
-			page_id++;
-			change_page(filename, file);
+			change_page(filename);
 		}
 
-		uint64_t free_space() const { return pagesize - *offset; }
+		uint64_t free_space() const { return pagesize - offset; }
 
-		uint8_t* write(const uint8_t* buffer, size_t size)
+		uint8_t* write(const uint8_t* buffer, size_t buffer_size_in_bytes)
 		{
-			auto start = InterlockedExchangeAdd64(offset.get(), size);
-			std::memcpy(base + start, buffer, size);
-			return base + start;
+			auto start = base + offset;
+			std::memcpy(start, buffer, buffer_size_in_bytes);			
+			offset += buffer_size_in_bytes;
+			return start;
 		}
 
 	private:
 
-		void change_page(const char* filename, HANDLE file)
+		void change_page(const char* filename)
 		{
-			CloseHandle(mapping);
+			static uint64_t page_id = 0;
 
-			mapping = CreateFileMapping(file, nullptr, PAGE_READWRITE, 0, pagesize, nullptr);
-			if (!mapping || mapping == INVALID_HANDLE_VALUE) throw std::exception("CreateFileMapping", GetLastError());
+			auto wide_file_offset = page_id * pagesize;
+			auto file_offset_high = static_cast<uint32_t>(wide_file_offset >> 32);
+			auto file_offset_low = static_cast<uint32_t>(wide_file_offset);
 			
-			uint64_t wide_offset = page_id * pagesize;
-			auto offset_high = static_cast<uint32_t>(wide_offset >> 32);
-			auto offset_low = static_cast<uint32_t>(wide_offset);
-			void* base_pointer = MapViewOfFile(mapping, FILE_MAP_ALL_ACCESS, offset_high, offset_low, pagesize);
-			base = reinterpret_cast<decltype(base)>(base_pointer);
-			
-			offset = shared<ptrdiff_t>{ make_name("offset", page_id, filename) };
+			auto mapped_memory = MapViewOfFile(mapping_object, FILE_MAP_ALL_ACCESS, file_offset_high, file_offset_low, pagesize);
+			base = reinterpret_cast<decltype(base)>(mapped_memory);
 		}
 
-	private:
-
-		std::atomic<uint64_t> page_id;
 		uint8_t* base;
-		shared<ptrdiff_t> offset;
-		shared<long> reference_count;
-		HANDLE mapping;
+		HANDLE mapping_object;
+		uint32_t offset;
 	};
 }

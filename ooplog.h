@@ -1,29 +1,83 @@
 //copyright Eric Budai 2017
 #pragma once
 
-#include "interprocess.h"
+//#include "interprocess.h"
 #include <variant>
-#include <atomic>
 #include <string>
-#include <filesystem>
 #include <chrono>
 #include <Windows.h>
 
-namespace oop
+namespace spry
 {
-	//template <typename T = void>
+	struct page
+	{
+		enum { pagesize = 1 << 14 };
+
+		page() : base(nullptr), mapping_object(INVALID_HANDLE_VALUE) { }
+
+		void initialize(const char* filename, HANDLE file_handle)
+		{
+			mapping_object = CreateFileMappingA(file_handle, nullptr, PAGE_READWRITE, 0, pagesize, nullptr);
+			if (mapping_object == INVALID_HANDLE_VALUE) throw std::exception("CreateFileMapping", GetLastError());
+			flip_to_next_page(filename);
+		}
+
+		~page()
+		{
+			UnmapViewOfFile(base);
+			CloseHandle(mapping_object);
+		}
+
+		void flip_to_next_page(const char* filename)
+		{
+			UnmapViewOfFile(base);
+			change_page(filename);
+		}
+
+		uint64_t free_space() const { return pagesize - offset; }
+
+		uint8_t* write(const uint8_t* buffer, uint32_t buffer_size_in_bytes)
+		{
+			auto start = base + offset;
+			std::memcpy(start, buffer, buffer_size_in_bytes);
+			offset += buffer_size_in_bytes;
+			return start;
+		}
+
+	private:
+
+		void change_page(const char* filename)
+		{
+			static uint64_t page_id = 0;
+
+			auto wide_file_offset = page_id * pagesize;
+			auto file_offset_high = static_cast<uint32_t>(wide_file_offset >> 32);
+			auto file_offset_low = static_cast<uint32_t>(wide_file_offset);
+
+			auto mapped_memory = MapViewOfFile(mapping_object, FILE_MAP_ALL_ACCESS, file_offset_high, file_offset_low, pagesize);
+			base = reinterpret_cast<decltype(base)>(mapped_memory);
+		}
+
+		uint8_t* base;
+		HANDLE mapping_object;
+		uint32_t offset;
+	};
+
+	template <typename name = void>
 	struct log
 	{
 		using clock = std::chrono::high_resolution_clock;
 
 		enum class level { none, fatal, info, warn, debug, trace };
 
-		log(const char* filename = make_name("ooplog", GetCurrentProcessId(), ".binlog"))
+		log(const char* filename = "~spry.binlog")
 			: filename(filename)
-			, file(CreateFileA(filename, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr))
-			, messages(0, filename, file)
-			, strings(0, filename, file)
-		{ }
+			, file(INVALID_HANDLE_VALUE) 
+		{
+			file = CreateFileA(filename, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_HIDDEN, nullptr);
+			messages.initialize(filename, file);
+			strings.initialize(filename, file);
+		}
 
 		~log() { CloseHandle(file); }
 
@@ -61,7 +115,7 @@ namespace oop
 
 		class newline { };
 
-		using arg = std::variant<newline, uint8_t, int8_t, uint16_t, int16_t, uint32_t, int32_t, uint64_t, int64_t, float, double, const char*, std::chrono::microseconds>;
+		using arg = std::variant<newline, std::chrono::microseconds, const char*, uint8_t, int8_t, uint16_t, int16_t, uint32_t, int32_t, uint64_t, int64_t, float, double>;
 		using arglist = std::initializer_list<arg>;
 
 		__declspec(noinline) void write_fatal_message(arglist&& args) { write(std::move(args)); }
@@ -74,21 +128,21 @@ namespace oop
 		{
 			write_strings(args);
 			auto size = args.size() * sizeof(arg);
-			if (messages.free_space() < size) messages.flip_to_next_page(filename.data(), file);
+			if (messages.free_space() < size) messages.flip_to_next_page(filename.data());
 			messages.write(reinterpret_cast<const uint8_t*>(args.begin()), size);
 		}
 
 		__forceinline void write_strings(arglist& args)
 		{
-			const auto stringcopy = [this](auto& string) { copy_to_strings_page_and_update_pointer_if_string(string); };
+			const auto stringcopy = [this](auto& string) { write_to_string_page(string); };
 			for (auto& arg : args) std::visit(stringcopy, arg);
 		}
 
-		template <typename T> __forceinline void copy_to_strings_page_and_update_pointer_if_string(T& value) { }
-		template <> __forceinline void copy_to_strings_page_and_update_pointer_if_string<const char*>(const char*& string)
+		template <typename T> __forceinline void write_to_string_page(T& value) { }
+		template <> __forceinline void write_to_string_page<const char*>(const char*& string)
 		{
 			auto length = std::strlen(string);
-			if (strings.free_space() < length) strings.flip_to_next_page(filename.data(), file);
+			if (strings.free_space() < length) strings.flip_to_next_page(filename.data());
 			auto pointer = strings.write(reinterpret_cast<const uint8_t*>(string), std::strlen(string));
 			string = reinterpret_cast<const char*>(pointer);
 		}
@@ -159,10 +213,11 @@ namespace oop
 		}
 
 		std::string filename;
-
-		page messages;
-		page strings;
-
 		HANDLE file;
+		static thread_local page messages;
+		static thread_local page strings;	
 	};
+
+	template <typename name> thread_local page log<name>::messages{};
+	template <typename name> thread_local page log<name>::strings{};
 }
