@@ -139,7 +139,6 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="interprocess.h" />
     <ClInclude Include="ooplog.h" />
   </ItemGroup>
   <ItemGroup>
