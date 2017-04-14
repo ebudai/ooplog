@@ -3,21 +3,24 @@
 
 //#include "interprocess.h"
 #include <variant>
+#include <shared_mutex>
 #include <string>
 #include <chrono>
+#include <functional>
+#include <any>
 #include <Windows.h>
 
 namespace spry
 {
 	struct page
 	{
-		enum { pagesize = 1 << 16 };
+		enum { page_granularity = 1 << 16 };
 
 		page(const char* filename, HANDLE file_handle) 
 			: base(nullptr)
 			, mapping_object(INVALID_HANDLE_VALUE)
 		{
-			mapping_object = CreateFileMappingA(file_handle, nullptr, PAGE_READWRITE, 0, pagesize, nullptr);
+			mapping_object = CreateFileMappingA(file_handle, nullptr, PAGE_READWRITE, 0, page_granularity, nullptr);
 			if (mapping_object == INVALID_HANDLE_VALUE) throw std::exception("CreateFileMapping", GetLastError());
 			flip_to_next_page(filename);
 		}
@@ -34,14 +37,21 @@ namespace spry
 			change_page(filename);
 		}
 
-		uint64_t free_space() const { return pagesize - offset; }
+		uint64_t free_space() const { return page_granularity - offset; }
 
 		uint8_t* write(const uint8_t* buffer, size_t buffer_size_in_bytes)
 		{
 			auto start = base + offset;
-			std::memcpy(start, buffer, buffer_size_in_bytes);
+			std::copy(buffer, buffer + buffer_size_in_bytes, start);
 			offset += buffer_size_in_bytes;
 			return start;
+		}
+
+		template <typename... Args> void write(Args&&... args)
+		{
+			auto start = base + offset;
+			new (start) log::arg[sizeof...(args)]{ std::forward<Args>(args)... };
+			offset += sizeof...(args) * sizeof(log::arg);
 		}
 
 	private:
@@ -50,11 +60,11 @@ namespace spry
 		{
 			static uint64_t page_id = 0;
 
-			auto wide_file_offset = page_id * pagesize;
+			auto wide_file_offset = page_id * page_granularity;
 			auto file_offset_high = static_cast<uint32_t>(wide_file_offset >> 32);
 			auto file_offset_low = static_cast<uint32_t>(wide_file_offset);
 
-			auto mapped_memory = MapViewOfFile(mapping_object, FILE_MAP_ALL_ACCESS, file_offset_high, file_offset_low, pagesize);
+			auto mapped_memory = MapViewOfFile(mapping_object, FILE_MAP_ALL_ACCESS, file_offset_high, file_offset_low, page_granularity);
 			base = reinterpret_cast<decltype(base)>(mapped_memory);
 		}
 
@@ -65,9 +75,11 @@ namespace spry
 
 	struct log
 	{
+		friend struct page;
+
 		using clock = std::chrono::high_resolution_clock;
 
-		enum class level { none, fatal, info, warn, debug, trace };
+		enum class level : int { none = 0, fatal, info, warn, debug, trace };
 
 		log(const char* filename = "spry.binlog")
 			: filename(filename)
@@ -79,139 +91,67 @@ namespace spry
 
 		~log() { CloseHandle(file); }
 
-		template <typename... Args> __forceinline void fatal(Args&&... args) { write_fatal_message({ clock::now(), std::forward<Args>(args)..., newline{} }); }
-		template <typename... Args> __forceinline void info(Args&&... args) { write_info_message({ clock::now(), std::forward<Args>(args)..., newline{} }); }
-		template <typename... Args> __forceinline void warn(Args&&... args) { write_warn_message({ clock::now(), std::forward<Args>(args)..., newline{} }); }
-		template <typename... Args> __forceinline void debug(Args&&... args) { write_debug_message({ clock::now(), std::forward<Args>(args)..., newline{} }); }
-		template <typename... Args> __forceinline void trace(Args&&... args) { write_trace_message({ clock::now(), std::forward<Args>(args)..., newline{} }); }
-
-		static void set_level(level level)
+		template <typename... Args> __forceinline void fatal(Args&&... args) 
 		{
-			//fallthrough is intentional
-			switch (level)
-			{
-				case level::trace:	enable(level::trace);
-				case level::debug:	enable(level::debug);
-				case level::warn:	enable(level::warn);
-				case level::info:	enable(level::info);
-				case level::fatal:	enable(level::fatal);
-				default:			break;
-			}
-
-			switch (level)
-			{
-				case level::none:	disable(level::fatal);
-				case level::fatal:	disable(level::info);
-				case level::info:	disable(level::warn);
-				case level::warn:	disable(level::debug);
-				case level::debug:	disable(level::trace);
-				default:			break;
-			}
+			if (level == level::none) return;
+			write(clock::now(), std::forward<Args>(args)..., newline{}); 
 		}
+		template <typename... Args> __forceinline void info(Args&&... args) 
+		{
+			if (level < level::info) return;
+			write(clock::now(), std::forward<Args>(args)..., newline{});
+		}
+		template <typename... Args> __forceinline void warn(Args&&... args) 
+		{
+			if (level < level::warn) return;
+			write({ clock::now(), std::forward<Args>(args)..., newline{} }); 
+		}
+		template <typename... Args> __forceinline void debug(Args&&... args) 
+		{
+			if (level < level::debug) return;
+			write({ clock::now(), std::forward<Args>(args)..., newline{} }); 
+		}
+		template <typename... Args> __forceinline void trace(Args&&... args) 
+		{
+			if (level < level::trace) return;
+			write_trace_message({ clock::now(), std::forward<Args>(args)..., newline{} }); 
+		}
+
+		level level;
 
 	private:
 
 		class newline { };
 
 		using arg = std::variant<newline, std::chrono::steady_clock::time_point, const char*, uint8_t, int8_t, uint16_t, int16_t, uint32_t, int32_t, uint64_t, int64_t, float, double>;
-		using arglist = std::initializer_list<arg>;
 
-		__declspec(noinline) void write_fatal_message(arglist&& args) { write(std::move(args)); }
-		__declspec(noinline) void write_info_message(arglist&& args) { write(std::move(args)); }
-		__declspec(noinline) void write_warn_message(arglist&& args) { write(std::move(args)); }
-		__declspec(noinline) void write_debug_message(arglist&& args) { write(std::move(args)); }
-		__declspec(noinline) void write_trace_message(arglist&& args) { write(std::move(args)); }
-
-		__forceinline void write(arglist&& args)
+		template <typename... Args> __forceinline void write(Args&&... args)
 		{
 			static thread_local page messages{ filename.data(), file };
-			write_strings(args);
-			auto size = args.size() * sizeof(arg);
-			if (messages.free_space() < size) messages.flip_to_next_page(filename.data());
-			messages.write(reinterpret_cast<const uint8_t*>(args.begin()), size);
+			
+			write_strings(std::forward<Args>(args)...);
+			
+			messages.write(std::forward<Args>(args)...);
 		}
 
-		__forceinline void write_strings(arglist& args)
+		template <typename T, typename... Args> __forceinline void write_strings(T&&, Args&&...) { }
+		template <typename... Args> __forceinline void write_strings(const char*& string, Args&&... args)
 		{
-			const auto stringcopy = [this](const auto& string) { write_to_string_page(string); };
-			for (auto& arg : args) std::visit(stringcopy, arg);
-		}
+			static thread_local page strings{ (filename + "strings").data(), file };
+			static int base_pointer_saver = [&strings]()
+			{
+				strings.write(&strings.base, sizeof(strings.base)); 
+				return 0; 
+			}();
 
-		template <typename T> __forceinline void write_to_string_page(const T& value) { }
-		template <> __forceinline void write_to_string_page<const char*&>(const char*& string)
-		{
-			static thread_local page strings{ filename.data(), file };
 			auto length = std::strlen(string);
 			if (strings.free_space() < length) strings.flip_to_next_page(filename.data());
 			auto pointer = strings.write(reinterpret_cast<const uint8_t*>(string), std::strlen(string));
 			string = reinterpret_cast<const char*>(pointer);
+
+			write_strings(std::forward<Args>(args)...);
 		}
-
-		static void enable(level level)
-		{
-			auto get_first_byte = [](void(log::*function)(arglist&&))
-			{
-				auto address = reinterpret_cast<uint8_t*&>(function);
-				return address[0];
-			};
-
-			auto restore_first_byte = [](void(log::*function)(arglist&&), uint8_t byte)
-			{
-				auto address = reinterpret_cast<uint8_t*&>(function);
-				
-				DWORD protection = 0;
-				auto success = VirtualProtect(address, 1, PAGE_EXECUTE_READWRITE, &protection);
-				if (!success) throw std::exception("VirtualProtect (gain write access)", GetLastError());
-
-				address[0] = byte;
-
-				success = VirtualProtect(address, 1, protection, &protection);
-				if (!success) throw std::exception("VirtualProtect (lose write access)", GetLastError());
-			};
-
-			static auto fatal_code = get_first_byte(&write_fatal_message);
-			static auto info_code = get_first_byte(&write_info_message);
-			static auto warn_code = get_first_byte(&write_warn_message);
-			static auto debug_code = get_first_byte(&write_debug_message);
-			static auto trace_code = get_first_byte(&write_trace_message);
-
-			switch (level)
-			{
-				case level::fatal:	restore_first_byte(&write_fatal_message, fatal_code);	break;
-				case level::info:	restore_first_byte(&write_info_message, info_code);		break;
-				case level::warn:	restore_first_byte(&write_warn_message, warn_code);		break;
-				case level::debug:	restore_first_byte(&write_debug_message, debug_code);	break;
-				case level::trace:	restore_first_byte(&write_trace_message, trace_code);	break;
-				default:																	break;
-			}
-		}
-
-		static void disable(level level)
-		{
-			auto clear_first_byte = [](void(log::*function)(arglist&&))
-			{
-				auto address = reinterpret_cast<uint8_t*&>(function);
-
-				DWORD protection = 0;
-				auto success = VirtualProtect(address, 1, PAGE_EXECUTE_READWRITE, &protection);
-				if (!success) throw std::exception("VirtualProtect (gain write access)", GetLastError());
-
-				address[0] = 0xC3; //change first instruction of function to RET
-
-				success = VirtualProtect(address, 1, protection, &protection);
-				if (!success) throw std::exception("VirtualProtect (lose write access)", GetLastError());
-			};
-
-			switch (level)
-			{
-				case level::fatal:	clear_first_byte(&write_fatal_message);	break;
-				case level::info:	clear_first_byte(&write_info_message);	break;
-				case level::warn:	clear_first_byte(&write_warn_message);	break;
-				case level::debug:	clear_first_byte(&write_debug_message);	break;
-				case level::trace:	clear_first_byte(&write_trace_message);	break;
-			}
-		}
-
+		
 		std::string filename;
 		HANDLE file;
 	};
