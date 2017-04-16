@@ -19,7 +19,7 @@ namespace spry
 	{
 		friend struct log;
 
-		enum { page_granularity = 1 << 32 };
+		enum { page_granularity = 1 << 16 };
 		
 		page(const char* filename)
 			: base(nullptr)
@@ -31,7 +31,7 @@ namespace spry
 			file_handle = CreateFileA(filename, access, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
 			if (file_handle == INVALID_HANDLE_VALUE) throw std::exception("CreateFile", GetLastError());
 
-			mapping_object = CreateFileMappingA(file_handle, nullptr, PAGE_READWRITE, 0, file_size, nullptr);
+			mapping_object = CreateFileMappingA(file_handle, nullptr, PAGE_READWRITE, 0, log::file_granularity, nullptr);
 			if (mapping_object == INVALID_HANDLE_VALUE) throw std::exception("CreateFileMapping", GetLastError());
 			
 			flip_to_next_page();
@@ -80,7 +80,6 @@ namespace spry
 		HANDLE mapping_object;
 		HANDLE file_handle;
 		uint64_t page_id;
-		uint64_t file_size = page_granularity;
 	};
 
 	struct log
