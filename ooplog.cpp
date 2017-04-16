@@ -21,10 +21,10 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	spry::log log;
 	nanoseconds max_latency = 0ns;
 	nanoseconds avg_latency = 0ns;
-	log.level = spry::log::level::info;
+	log.set_to_info();
 	//remove init penalty
 	log.info("", 0);
-	auto iterations = 1000000;
+	int iterations = 50000000;
 	for (int i = 0; i < iterations; i++)
 	{
 		auto start = high_resolution_clock::now();
@@ -35,7 +35,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 		max_latency = std::max(max_latency, latency);
 	}
 
-	cout << avg_latency.count() / (double)iterations << '\n';
+	avg_latency /= iterations;
+
+	cout << avg_latency.count() << '\n';
 
 	cout << max_latency.count() << '\n';
 
