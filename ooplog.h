@@ -78,9 +78,9 @@ namespace spry
 		}
 		
 		template <typename T, size_t N> 
-		constexpr inline std::enable_if_t<!std::is_pointer_v<T&&>, ct_string> write_strings(T(&string)[N])
+		constexpr inline std::enable_if_t<!std::is_pointer_v<T&&>, string_hash> write_strings(T(&string)[N])
 		{
-			return string;
+			return { std::hash<const char*>{}(string) };
 		}
 
 		template <typename T>

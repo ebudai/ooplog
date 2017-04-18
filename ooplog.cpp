@@ -7,16 +7,6 @@
 
 #include <iostream>
 
-int test(spry::ct_string& x)
-{
-	return 0;
-}
-
-int test(const char* x)
-{
-	return 0;
-}
-
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
                      _In_opt_ HINSTANCE hPrevInstance,
                      _In_ LPWSTR    lpCmdLine,
@@ -38,9 +28,6 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	log.info("", 0);
 	log.info(data);
 	log.info(thismightwork);
-	
-	auto t = test("test");
-	cout << t << '\n';
 
 	int iterations = 50000000;
 	for (int i = 0; i < iterations; i++)

@@ -8,60 +8,47 @@
 #include <variant>
 #include <Windows.h>
 
+#define unset INVALID_HANDLE_VALUE
+
 namespace spry
 {
-	class newline { };
-
-	struct ct_string
-	{
-		template <size_t N> constexpr ct_string(const char(&string)[N]) : hash(fnv1(string)) {	}
-
-		uint64_t hash;
-
-	private:
-
-		constexpr uint64_t fnv1(uint64_t h, const char* s)
-		{
-			return (*s == 0) ? h :
-				fnv1((h * 1099511628211ull) ^ static_cast<uint64_t>(*s), s + 1);
-		}
-
-		constexpr uint64_t fnv1(const char* s)
-		{
-			return true ?
-				fnv1(14695981039346656037ull, s) :
-				throw std::exception{};
-		}
-	};
+	struct newline { };
+	struct string_hash { uint64_t value; };
 
 	using time_point = std::chrono::steady_clock::time_point;
-	using arg = std::variant<newline, time_point, ct_string, const char*, uint8_t, int8_t, uint16_t, int16_t, uint32_t, int32_t, uint64_t, int64_t, float, double>;
+	using arg = std::variant<
+		newline, time_point, string_hash, const char*, 
+		uint8_t, int8_t, 
+		uint16_t, int16_t, 
+		uint32_t, int32_t, 
+		uint64_t, int64_t, 
+		float, double>;
 
 	struct page
 	{
 		friend struct log;
 
 		static constexpr auto page_granularity = 1 << 16;
-		static constexpr auto file_granularity = std::numeric_limits<DWORD>::max();
+		static constexpr auto file_granularity = std::numeric_limits<DWORD>::max();		
+		static constexpr auto access = GENERIC_READ | GENERIC_WRITE;
+		static constexpr auto share = FILE_SHARE_READ | FILE_SHARE_WRITE;
+		static constexpr auto create = CREATE_ALWAYS;
+		static constexpr auto attributes = FILE_ATTRIBUTE_NORMAL;
+		static constexpr auto protect = PAGE_READWRITE;
+		static constexpr auto map_access = FILE_MAP_ALL_ACCESS;
 
 		page(const char* filename, uint64_t page)
 			: base(nullptr)
 			, offset(0)
-			, file_handle(INVALID_HANDLE_VALUE)
-			, mapping_object(INVALID_HANDLE_VALUE)
+			, file_handle(unset)
+			, mapping_object(unset)
 		{
-			constexpr auto access = GENERIC_READ | GENERIC_WRITE;
-			constexpr auto share = FILE_SHARE_READ | FILE_SHARE_WRITE;
-			constexpr auto create = CREATE_ALWAYS;
-			constexpr auto attributes = FILE_ATTRIBUTE_NORMAL;
-
 			file_handle = CreateFileA(filename, access, share, nullptr, create, attributes, nullptr);
-			if (file_handle == INVALID_HANDLE_VALUE) throw std::exception("CreateFile", GetLastError());
-
-			constexpr auto protect = PAGE_READWRITE;
+			if (file_handle == unset) throw std::exception("CreateFile", GetLastError());
+			
 
 			mapping_object = CreateFileMappingA(file_handle, nullptr, protect, 0, file_granularity, nullptr);
-			if (mapping_object == INVALID_HANDLE_VALUE) throw std::exception("CreateFileMapping", GetLastError());
+			if (mapping_object == unset) throw std::exception("CreateFileMapping", GetLastError());
 
 			flip_to_page(page);
 		}
@@ -80,7 +67,7 @@ namespace spry
 			auto file_offset_high = static_cast<uint32_t>(wide_file_offset >> 32);
 			auto file_offset_low = static_cast<uint32_t>(wide_file_offset);
 
-			auto mapped_memory = MapViewOfFile(mapping_object, FILE_MAP_ALL_ACCESS, file_offset_high, file_offset_low, page_granularity);
+			auto mapped_memory = MapViewOfFile(mapping_object, map_access, file_offset_high, file_offset_low, page_granularity);
 			if (!mapped_memory) throw std::exception("MapViewOfFile", GetLastError());
 			base = static_cast<decltype(base)>(mapped_memory);
 			offset = 0;
@@ -110,3 +97,5 @@ namespace spry
 		HANDLE file_handle;
 	};
 }
+
+#undef unset
