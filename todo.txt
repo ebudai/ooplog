@@ -1,0 +1,3 @@
+- file flipping (if mapped file is full, have to map another 4GB)
+- afterparsing
+- 

@@ -7,6 +7,16 @@
 
 #include <iostream>
 
+int test(spry::ct_string& x)
+{
+	return 0;
+}
+
+int test(const char* x)
+{
+	return 0;
+}
+
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
                      _In_opt_ HINSTANCE hPrevInstance,
                      _In_ LPWSTR    lpCmdLine,
@@ -18,11 +28,6 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	using namespace std;
 	using namespace std::chrono;
 
-	auto&& tttt = "UUIUIIIU";
-	using a = std::decay_t<decltype(tttt)>;
-	const auto d = std::is_array_v<const char(&)[6]>;
-	const auto b = std::is_same_v<decltype(tttt), a>;
-	a c;
 	spry::log log;
 	nanoseconds max_latency = 0ns;
 	nanoseconds avg_latency = 0ns;
@@ -34,6 +39,8 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	log.info(data);
 	log.info(thismightwork);
 	
+	auto t = test("test");
+	cout << t << '\n';
 
 	int iterations = 50000000;
 	for (int i = 0; i < iterations; i++)
@@ -54,7 +61,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 
 	cout << max_latency.count() << '\n';
 
-	abort();
+	//abort();
 
 	return 0;
 }

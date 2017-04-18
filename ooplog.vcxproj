@@ -126,6 +126,8 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <Profile>true</Profile>
+      <GenerateDebugInformation>DebugFastLink</GenerateDebugInformation>
+      <FullProgramDatabaseFile>true</FullProgramDatabaseFile>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -153,16 +155,20 @@
       <SubSystem>Windows</SubSystem>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <GenerateDebugInformation>false</GenerateDebugInformation>
-      <FullProgramDatabaseFile>false</FullProgramDatabaseFile>
+      <GenerateDebugInformation>DebugFastLink</GenerateDebugInformation>
+      <FullProgramDatabaseFile>true</FullProgramDatabaseFile>
       <Profile>false</Profile>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="memory_mapped_file.h" />
     <ClInclude Include="ooplog.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="ooplog.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="todo.txt" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
