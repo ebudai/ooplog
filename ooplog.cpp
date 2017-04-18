@@ -18,16 +18,29 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	using namespace std;
 	using namespace std::chrono;
 
+	auto&& tttt = "UUIUIIIU";
+	using a = std::decay_t<decltype(tttt)>;
+	const auto d = std::is_array_v<const char(&)[6]>;
+	const auto b = std::is_same_v<decltype(tttt), a>;
+	a c;
 	spry::log log;
 	nanoseconds max_latency = 0ns;
 	nanoseconds avg_latency = 0ns;
 	log.set_to_info();
 	//remove init penalty
+	std::string thismightwork = "yay";
+	auto data = thismightwork.c_str();
 	log.info("", 0);
+	log.info(data);
+	log.info(thismightwork);
+	
+
 	int iterations = 50000000;
 	for (int i = 0; i < iterations; i++)
 	{
 		auto start = high_resolution_clock::now();
+		log.info("test", 7);
+		log.info("test", 7);
 		log.info("test", 7);
 		auto end = high_resolution_clock::now();
 		auto latency = end - start;
