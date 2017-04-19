@@ -161,6 +161,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="exe_strings.h" />
     <ClInclude Include="memory_mapped_file.h" />
     <ClInclude Include="ooplog.h" />
   </ItemGroup>

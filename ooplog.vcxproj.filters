@@ -3,6 +3,7 @@
   <ItemGroup>
     <ClInclude Include="ooplog.h" />
     <ClInclude Include="memory_mapped_file.h" />
+    <ClInclude Include="exe_strings.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="ooplog.cpp" />

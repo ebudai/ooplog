@@ -4,6 +4,7 @@
 #define NOMINMAX
 
 #include "memory_mapped_file.h"
+#include "exe_strings.h"
 #include <atomic>
 #include <Windows.h>
 
@@ -18,27 +19,27 @@ namespace spry
 		log(const char* filename = "spry.binlog") : filename(filename) { }
 		~log() = default;
 
-		template <typename... Args> constexpr inline void fatal(Args&&... args)
+		template <typename... Args> constexpr __forceinline void fatal(Args&&... args)
 		{
 			if (level == level::none) return;
 			write({ clock::now(), write_strings(std::forward<Args>(args))..., newline{} });
 		}
-		template <typename... Args> constexpr inline void info(Args&&... args)
+		template <typename... Args> constexpr __forceinline void info(Args&&... args)
 		{
 			if (level < level::info) return;
 			write({ clock::now(), write_strings(std::forward<Args>(args))..., newline{} });
 		}
-		template <typename... Args> constexpr inline void warn(Args&&... args)
+		template <typename... Args> constexpr __forceinline void warn(Args&&... args)
 		{
 			if (level < level::warn) return;
 			write({ clock::now(), write_strings(std::forward<Args>(args))..., newline{} });
 		}
-		template <typename... Args> constexpr inline void debug(Args&&... args)
+		template <typename... Args> constexpr __forceinline void debug(Args&&... args)
 		{
 			if (level < level::debug) return;
 			write({ clock::now(), write_strings(std::forward<Args>(args))..., newline{} });
 		}
-		template <typename... Args> constexpr inline void trace(Args&&... args)
+		template <typename... Args> constexpr __forceinline void trace(Args&&... args)
 		{
 			if (level < level::trace) return;
 			write({ clock::now(), write_strings(std::forward<Args>(args))..., newline{} });
@@ -55,7 +56,7 @@ namespace spry
 
 		void set_level(level new_level) { level = new_level; }
 
-		inline void write(std::initializer_list<arg>&& args)
+		__forceinline void write(std::initializer_list<arg>&& args)
 		{
 			static std::atomic<uint64_t> page_counter{ 0 };
 			static thread_local page messages{ filename.data(), page_counter++ };
@@ -66,25 +67,25 @@ namespace spry
 		}
 
 		template <typename T> 
-		inline std::enable_if_t<!std::is_pointer_v<T>, T&&> write_strings(T&& arg)
+		__forceinline std::enable_if_t<!std::is_pointer_v<T>, T&&> write_strings(T&& arg)
 		{
 			return std::forward<T>(arg);
 		}
 
-		inline const char* write_strings(std::string& string)
+		__forceinline const char* write_strings(std::string& string)
 		{
 			auto data = string.c_str();
 			return write_strings(data);
 		}
 		
 		template <typename T, size_t N> 
-		constexpr inline std::enable_if_t<!std::is_pointer_v<T&&>, string_hash> write_strings(T(&string)[N])
+		constexpr __forceinline std::enable_if_t<!std::is_pointer_v<T&&>, string_hash> write_strings(T(&string)[N])
 		{
 			return { std::hash<const char*>{}(string) };
 		}
 
 		template <typename T>
-		inline std::enable_if_t<std::is_pointer_v<T>, const char*> write_strings(T& string)
+		__forceinline std::enable_if_t<std::is_pointer_v<T>, const char*> write_strings(T& string)
 		{
 			static std::atomic<uint64_t> page_counter{ 0 };
 			static thread_local page strings{ (filename + "strings").data(), page_counter++ };

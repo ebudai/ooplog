@@ -18,6 +18,8 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	using namespace std;
 	using namespace std::chrono;
 
+	auto strings = spry::extract_embedded_strings_from_current_module();
+
 	spry::log log;
 	nanoseconds max_latency = 0ns;
 	nanoseconds avg_latency = 0ns;
@@ -52,6 +54,3 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 
 	return 0;
 }
-
-
-
