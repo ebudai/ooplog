@@ -6,18 +6,22 @@
 #include "memory_mapped_file.h"
 #include "exe_strings.h"
 #include <atomic>
+#include <mutex>
 #include <Windows.h>
+
+
 
 namespace spry
 {
+	//template <typename name = void> //uncomment to allow multiple files per process
 	struct log
 	{
 		using clock = std::chrono::high_resolution_clock;
-		
-		enum class level : int { none = 0, fatal, info, warn, debug, trace };
 
-		log(const char* filename = "spry.binlog") : filename(filename) { }
-		~log() = default;
+		log() : filename("spry")
+		{
+			filename += std::to_string(GetCurrentProcessId()) + ".binlog";
+		}
 
 		template <typename... Args> constexpr __forceinline void fatal(Args&&... args)
 		{
@@ -45,7 +49,7 @@ namespace spry
 			write({ clock::now(), write_strings(std::forward<Args>(args))..., newline{} });
 		}
 
-		void disable() { set_level(level::none); }
+		void set_to_none() { set_level(level::none); }
 		void set_to_fatal() { set_level(level::fatal); }
 		void set_to_info() { set_level(level::info); }
 		void set_to_warn() { set_level(level::warn); }
@@ -54,12 +58,14 @@ namespace spry
 
 	private:
 
-		void set_level(level new_level) { level = new_level; }
+		enum class level : int { none = 0, fatal, info, warn, debug, trace };
+
+		inline void set_level(level new_level) { level = new_level; }
 
 		__forceinline void write(std::initializer_list<arg>&& args)
 		{
 			static std::atomic<uint64_t> page_counter{ 0 };
-			static thread_local page messages{ filename.data(), page_counter++ };
+			static thread_local memory_mapped_file messages{ filename.data(), page_counter++ };
 
 			const auto length = args.size() * sizeof(arg);
 			if (messages.free_space() < length) { messages.flip_to_page(page_counter++); }
@@ -78,8 +84,20 @@ namespace spry
 			return write_strings(data);
 		}
 		
+		__forceinline const char* write_strings(const std::string& string)
+		{
+			auto data = string.c_str();
+			return write_strings(data);
+		}
+
 		template <typename T, size_t N> 
 		constexpr __forceinline std::enable_if_t<!std::is_pointer_v<T&&>, string_hash> write_strings(T(&string)[N])
+		{
+			return { std::hash<const char*>{}(string) };
+		}
+
+		template <typename T, size_t N>
+		constexpr __forceinline std::enable_if_t<!std::is_pointer_v<T&&>, string_hash> write_strings(const T(&string)[N])
 		{
 			return { std::hash<const char*>{}(string) };
 		}
@@ -88,7 +106,7 @@ namespace spry
 		__forceinline std::enable_if_t<std::is_pointer_v<T>, const char*> write_strings(T& string)
 		{
 			static std::atomic<uint64_t> page_counter{ 0 };
-			static thread_local page strings{ (filename + "strings").data(), page_counter++ };
+			static thread_local memory_mapped_file strings{ (filename + "strings").data(), page_counter++ };
 
 			const auto length = std::strlen(string);
 			if (strings.free_space() < length) strings.flip_to_page(page_counter++);

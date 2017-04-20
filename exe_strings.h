@@ -1,12 +1,12 @@
 #pragma once
 
-#include <vector>
+#include <unordered_set>
 #include <string>
 #include <Psapi.h>
 
 namespace spry
 {
-	static std::vector<std::string> extract_embedded_strings_from_current_module()
+	static std::unordered_set<std::string> extract_embedded_strings_from_current_module()
 	{
 		MODULEINFO module_info{ 0 };
 		auto success = GetModuleInformation(GetCurrentProcess(), GetModuleHandle(nullptr), &module_info, sizeof(module_info));
@@ -16,14 +16,14 @@ namespace spry
 		const char* end = current_char + module_info.SizeOfImage;
 
 		std::string buffer;
-		std::vector<std::string> strings;
+		std::unordered_set<std::string> strings;
 		strings.reserve(64);
 
 		while (++current_char != end)
 		{
 			if (*current_char == '\0')
 			{
-				if (buffer.size() >= 4) strings.push_back(buffer);
+				if (!buffer.empty()) strings.insert(buffer);
 				buffer.clear();
 				current_char;
 			}

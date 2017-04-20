@@ -27,7 +27,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	//remove init penalty
 	std::string thismightwork = "yay";
 	auto data = thismightwork.c_str();
-	log.info("", 0);
+	log.info(" ", 0);
 	log.info(data);
 	log.info(thismightwork);
 

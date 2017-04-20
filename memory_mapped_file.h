@@ -8,7 +8,7 @@
 #include <variant>
 #include <Windows.h>
 
-#define unset INVALID_HANDLE_VALUE
+#define NOT_SET INVALID_HANDLE_VALUE
 
 namespace spry
 {
@@ -24,36 +24,31 @@ namespace spry
 		uint64_t, int64_t, 
 		float, double>;
 
-	struct page
+	struct memory_mapped_file
 	{
-		friend struct log;
 
-		static constexpr auto page_granularity = 1 << 16;
-		static constexpr auto file_granularity = std::numeric_limits<DWORD>::max();		
-		static constexpr auto access = GENERIC_READ | GENERIC_WRITE;
-		static constexpr auto share = FILE_SHARE_READ | FILE_SHARE_WRITE;
-		static constexpr auto create = CREATE_ALWAYS;
-		static constexpr auto attributes = FILE_ATTRIBUTE_NORMAL;
-		static constexpr auto protect = PAGE_READWRITE;
-		static constexpr auto map_access = FILE_MAP_ALL_ACCESS;
-
-		page(const char* filename, uint64_t page)
+		memory_mapped_file(const char* filename, uint64_t page)
 			: base(nullptr)
 			, offset(0)
-			, file_handle(unset)
-			, mapping_object(unset)
-		{
+			, file_handle(NOT_SET)
+			, mapping_object(NOT_SET)
+		{		
+			static constexpr auto access = GENERIC_READ | GENERIC_WRITE;
+			static constexpr auto share = FILE_SHARE_READ | FILE_SHARE_WRITE;
+			static constexpr auto create = CREATE_ALWAYS;
+			static constexpr auto attributes = FILE_ATTRIBUTE_NORMAL;
+			static constexpr auto protect = PAGE_READWRITE;
+
 			file_handle = CreateFileA(filename, access, share, nullptr, create, attributes, nullptr);
-			if (file_handle == unset) throw std::exception("CreateFile", GetLastError());
-			
+			if (file_handle == NOT_SET) throw std::exception("CreateFile", GetLastError());			
 
 			mapping_object = CreateFileMappingA(file_handle, nullptr, protect, 0, file_granularity, nullptr);
-			if (mapping_object == unset) throw std::exception("CreateFileMapping", GetLastError());
+			if (mapping_object == NOT_SET) throw std::exception("CreateFileMapping", GetLastError());
 
 			flip_to_page(page);
 		}
 
-		~page()
+		~memory_mapped_file()
 		{
 			UnmapViewOfFile(base);
 			CloseHandle(mapping_object);
@@ -62,12 +57,14 @@ namespace spry
 
 		void flip_to_page(uint64_t page)
 		{
+			static constexpr auto access = FILE_MAP_ALL_ACCESS;
+
 			UnmapViewOfFile(base);
 			auto wide_file_offset = page * page_granularity;
 			auto file_offset_high = static_cast<uint32_t>(wide_file_offset >> 32);
 			auto file_offset_low = static_cast<uint32_t>(wide_file_offset);
 
-			auto mapped_memory = MapViewOfFile(mapping_object, map_access, file_offset_high, file_offset_low, page_granularity);
+			auto mapped_memory = MapViewOfFile(mapping_object, access, file_offset_high, file_offset_low, page_granularity);
 			if (!mapped_memory) throw std::exception("MapViewOfFile", GetLastError());
 			base = static_cast<decltype(base)>(mapped_memory);
 			offset = 0;
@@ -90,6 +87,9 @@ namespace spry
 		}
 
 	private:
+
+		static constexpr auto page_granularity = 1 << 16;
+		static constexpr auto file_granularity = std::numeric_limits<DWORD>::max();
 
 		uint8_t* base;
 		uint64_t offset;
