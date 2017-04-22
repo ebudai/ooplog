@@ -90,20 +90,36 @@ namespace spry
 			return write_strings(data);
 		}
 
-		template <typename T, size_t N> 
-		constexpr __forceinline std::enable_if_t<!std::is_pointer_v<T&&>, string_hash> write_strings(T(&string)[N])
+		/*template <typename T, size_t N>
+		constexpr __forceinline
+		std::enable_if_t<is_small_string_literal_v<T&&, N>, small_string_literal<T>> write_strings(T(&string)[N])
 		{
-			return { std::hash<const char*>{}(string) };
-		}
+			return { string };
+		}*/
 
 		template <typename T, size_t N>
-		constexpr __forceinline std::enable_if_t<!std::is_pointer_v<T&&>, string_hash> write_strings(const T(&string)[N])
+		constexpr __forceinline
+		std::enable_if_t<is_small_string_literal_v<T&&, N>, small_string_literal<T>> write_strings(const T(&string)[N])
+		{
+			return { string };
+		}
+
+		/*template <typename T, size_t N> 
+		constexpr __forceinline 
+		std::enable_if_t<is_large_string_literal_v<T&&, N>, string_hash> write_strings(T(&string)[N])
+		{
+			return { std::hash<const char*>{}(string) };
+		}*/
+
+		template <typename T, size_t N>
+		constexpr __forceinline 
+		std::enable_if_t<is_large_string_literal_v<T&&, N>, string_hash> write_strings(const T(&string)[N])
 		{
 			return { std::hash<const char*>{}(string) };
 		}
 
 		template <typename T>
-		__forceinline std::enable_if_t<std::is_pointer_v<T>, const char*> write_strings(T& string)
+		__forceinline std::enable_if_t<std::is_pointer_v<T>, T> write_strings(const T& string)
 		{
 			static std::atomic<uint64_t> page_counter{ 0 };
 			static thread_local memory_mapped_file strings{ (filename + "strings").data(), page_counter++ };

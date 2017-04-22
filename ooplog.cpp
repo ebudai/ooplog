@@ -18,7 +18,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	using namespace std;
 	using namespace std::chrono;
 
-	auto strings = spry::extract_embedded_strings_from_current_module();
+	void* base = GetModuleHandle(nullptr);
+
+	auto strings = spry::extract_strings_from_process<char>();
 
 	spry::log log;
 	nanoseconds max_latency = 0ns;
@@ -27,7 +29,8 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	//remove init penalty
 	std::string thismightwork = "yay";
 	auto data = thismightwork.c_str();
-	log.info(" ", 0);
+	
+	log.info("asdfasdfasdf", 0);
 	log.info(data);
 	log.info(thismightwork);
 
