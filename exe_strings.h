@@ -19,8 +19,8 @@ namespace spry
 		if (!success) throw std::exception("GetModuleFileName", GetLastError());
 		
 		size_t filesize = std::experimental::filesystem::file_size(filename);
-		auto start = std::make_unique<char_t[]>(filesize / sizeof(char_t));
-		const char_t* end = std::next(start.get(), filesize / sizeof(char_t));
+		auto character_count = static_cast<size_t>(std::ceil(filesize / static_cast<double>(sizeof(char_t))));
+		auto start = std::make_unique<char_t[]>(character_count);
 
 		{
 			std::ifstream file{ filename, std::ios::binary };
@@ -34,12 +34,13 @@ namespace spry
 			std::locale locale;
 			for (auto i = 0ull; i < length; i++)
 			{
-				if (std::iscntrl(string[i], locale)) return false;
+				if (!std::isprint(string[i], locale)) return false;
 			}
 			return true;
 		};
 
-		const char_t* string = start.get();
+		auto&& string = start.get();
+		const auto end = std::next(start.get(), character_count);
 
 		while (string != end)
 		{	
@@ -48,8 +49,7 @@ namespace spry
 			{
 				if (is_printable(string, length)) strings.insert(string);
 			}
-
-			string = std::min(string + std::max(1ull, length), end);
+			string = std::min(std::next(string, length + 1), end);
 		}
 
 		return strings;

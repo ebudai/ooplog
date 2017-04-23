@@ -6,6 +6,7 @@
 #include "sprylog.h"
 
 #include <iostream>
+#include <memory>
 
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
                      _In_opt_ HINSTANCE hPrevInstance,
@@ -22,7 +23,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 
 	//void* base = GetModuleHandle(nullptr);
 
-	auto strings = spry::extract_strings_from_process<char>();
+	auto strings = spry::extract_strings_from_process<unsigned char>();
 
 	spry::log log;
 	nanoseconds max_latency = 0ns;

@@ -81,21 +81,22 @@ namespace spry
 			return strings.write(buffer, buffer_size);
 		}
 
-		template <typename T> 
-		__forceinline std::enable_if_t<!is_char_type_pointer_v<T>, T&&> convert_arg(T&& arg)
+		template <typename T> __forceinline T&& convert_arg(T&& arg)
 		{
 			return std::forward<T>(arg);
 		}
 
-		__forceinline const char* convert_arg(std::string& string)
+		template <typename char_t> __forceinline const char_t* 
+		convert_arg(std::basic_string<char_t>& string)
 		{
-			auto data = string.c_str();
+			auto data = string.data();
 			return convert_arg(data);
 		}
 		
-		__forceinline const char* convert_arg(const std::string& string)
+		template <typename char_t> __forceinline const char_t*
+		convert_arg(const std::basic_string<char_t>& string)
 		{
-			auto data = string.c_str();
+			auto data = string.data();
 			return convert_arg(data);
 		}
 
@@ -109,13 +110,15 @@ namespace spry
 
 		template <typename char_t, size_t N>
 		constexpr __forceinline 
-		std::enable_if_t<is_large_string_literal_v<char_t&&, N>, string_hash> convert_arg(char_t(&string)[N])
+		std::enable_if_t<is_large_string_literal_v<char_t&&, N>, string_hash> 
+		convert_arg(char_t(&string)[N])
 		{
-			return { std::hash<const char_t*>{}(string) };
+			return { std::hash<char_t*>{}(string) };
 		}
 
 		template <typename char_t>
-		constexpr __forceinline std::enable_if_t<is_char_type_pointer_v<char_t>, const char_t> convert_arg(char_t& string)
+		constexpr __forceinline std::enable_if_t<is_char_type_pointer_v<char_t>, const char_t> 
+		convert_arg(char_t& string)
 		{
 			const auto length = std::strlen(string);
 			const auto pointer = write(reinterpret_cast<const uint8_t*>(string), length);
