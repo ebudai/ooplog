@@ -8,6 +8,8 @@
 #include <iostream>
 #include <memory>
 
+#include "argument.h"
+
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
                      _In_opt_ HINSTANCE hPrevInstance,
                      _In_ LPWSTR    lpCmdLine,
@@ -22,9 +24,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	using namespace std::chrono;
 
 	//void* base = GetModuleHandle(nullptr);
-
-	auto strings = spry::extract_strings_from_process<unsigned char>();
-
+	spry::small_string_literal<char> a = "test";
+	const char* ok = a;
+	auto strings = spry::extract_strings_from_process<char>();
 	spry::log log;
 	nanoseconds max_latency = 0ns;
 	nanoseconds avg_latency = 0ns;
