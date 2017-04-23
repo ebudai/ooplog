@@ -11,7 +11,7 @@
 
 namespace spry
 {
-	struct newline { };
+	struct new_line { };
 	struct string_hash { uint64_t value; };
 	using time_point = std::chrono::steady_clock::time_point;
 
@@ -28,10 +28,12 @@ namespace spry
 		uint64_t storage;
 	};
 
+	using error_code = unsigned long;
+
 	using arg = std::variant<
-		newline, time_point,
-		string_hash,
-		const char*, const wchar_t*, const char16_t*, const char32_t*,
+		new_line, time_point, string_hash, error_code,
+		const char*, const wchar_t*, 
+		const char16_t*, const char32_t*,
 		small_string_literal<char>,
 		small_string_literal<wchar_t>,
 		small_string_literal<char16_t>,
@@ -49,6 +51,18 @@ namespace spry
 			|| std::is_same_v<T, char16_t>
 			|| std::is_same_v<T, char32_t>;
 
+	template <typename T> static constexpr bool is_char_type_pointer_v = 
+		std::is_same_v<std::remove_reference_t<T>, char*>
+		|| std::is_same_v<std::remove_reference_t<T>, unsigned char*>
+		|| std::is_same_v<std::remove_reference_t<T>, wchar_t*>
+		|| std::is_same_v<std::remove_reference_t<T>, char16_t*>
+		|| std::is_same_v<std::remove_reference_t<T>, char32_t*>
+		|| std::is_same_v<std::remove_reference_t<T>, const char*>
+		|| std::is_same_v<std::remove_reference_t<T>, const unsigned char*>
+		|| std::is_same_v<std::remove_reference_t<T>, const wchar_t*>
+		|| std::is_same_v<std::remove_reference_t<T>, const char16_t*>
+		|| std::is_same_v<std::remove_reference_t<T>, const char32_t*>;
+
 	template <typename T, size_t N> static constexpr bool is_small_string_literal_v =
 		!std::is_pointer_v<T&&>
 			&& is_character_type_v<std::decay_t<T>>
@@ -61,7 +75,6 @@ namespace spry
 
 	struct memory_mapped_file
 	{
-
 		memory_mapped_file(const char* filename, uint64_t page)
 			: base(nullptr)
 			, offset(0)
@@ -72,9 +85,9 @@ namespace spry
 			static constexpr auto share = FILE_SHARE_READ | FILE_SHARE_WRITE;
 			static constexpr auto create = CREATE_ALWAYS;
 			static constexpr auto attributes = FILE_ATTRIBUTE_NORMAL;
-
+			
 			file_handle = CreateFileA(filename, access, share, nullptr, create, attributes, nullptr);
-			if (file_handle == INVALID_HANDLE_VALUE) throw std::exception("CreateFile", GetLastError());
+			if (file_handle == INVALID_HANDLE_VALUE) throw std::exception("CreateFile", GetLastError());		
 
 			open_mapping();
 
@@ -132,8 +145,14 @@ namespace spry
 		{
 			static constexpr auto protect = PAGE_READWRITE;
 
-			mapping_object = CreateFileMappingA(file_handle, nullptr, protect, 0, file_size, nullptr);
-			if (mapping_object == nullptr) throw std::exception("CreateFileMapping", GetLastError());
+			const auto file_size_high = static_cast<uint32_t>(file_size >> 32);
+			const auto file_size_low = static_cast<uint32_t>(file_size);
+
+			mapping_object = CreateFileMappingA(file_handle, nullptr, protect, file_size_high, file_size_low, nullptr);
+			if (mapping_object == nullptr)
+			{
+				throw std::exception("CreateFileMapping", GetLastError());
+			}
 		}
 
 		static constexpr auto page_granularity = 1 << 16;
@@ -145,4 +164,5 @@ namespace spry
 		HANDLE file_handle;
 		uint64_t file_size = file_granularity;
 	};
+
 }

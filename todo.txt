@@ -1,4 +1,4 @@
 x file growth (if mapped file is full, have to map another 4GB)
 - afterparsing
-- set page granularity programmatically
+n set page granularity programmatically
 n store ptrdiff_t instead of const char* (change return type of write_strings for const char*)

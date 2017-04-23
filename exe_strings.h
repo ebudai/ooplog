@@ -11,7 +11,6 @@ namespace spry
 {
 	template <typename char_t> static std::unordered_set<std::basic_string<char_t>> extract_strings_from_process()
 	{
-		std::locale locale;
 		std::string filename;
 		filename.reserve(256);
 		auto success = GetModuleFileNameA(nullptr, filename.data(), 256);
@@ -28,15 +27,14 @@ namespace spry
 
 		std::unordered_set<std::basic_string<char_t>> strings{ 64 };
 
-		auto contains_control_characters = [&](const char_t* string)
+		auto is_printable = [&](const char_t* string, size_t length)
 		{
-			char_t character = *string;
-			while (character)
+			std::locale locale;
+			for (auto i = 0ull; i < length; i++)
 			{
-				if (!std::isprint(character, locale)) return true;
-				character = *++string;
+				if (std::iscntrl(string[i], locale)) return false;
 			}
-			return false;
+			return true;
 		};
 
 		const char_t* string = start;
@@ -46,7 +44,7 @@ namespace spry
 			auto length = std::char_traits<char_t>::length(string);
 			if (length > small_string_literal<char_t>::max_size)
 			{
-				if (!contains_control_characters(string)) strings.insert(string);
+				if (is_printable(string, length)) strings.insert(string);
 			}
 
 			string = std::min(string + std::max(1ull, length), end);

@@ -9,8 +9,6 @@
 #include <mutex>
 #include <Windows.h>
 
-
-
 namespace spry
 {
 	//template <typename name = void> //uncomment to allow multiple files per process
@@ -20,33 +18,33 @@ namespace spry
 
 		log() : filename("spry")
 		{
-			filename += std::to_string(GetCurrentProcessId()) + ".binlog";
+			filename += /*std::to_string(GetCurrentProcessId()) +*/ ".binlog";
 		}
 
 		template <typename... Args> constexpr __forceinline void fatal(Args&&... args)
 		{
 			if (level == level::none) return;
-			write({ clock::now(), write_strings(std::forward<Args>(args))..., newline{} });
+			write({ clock::now(), convert_arg(std::forward<Args>(args))..., new_line{} });
 		}
 		template <typename... Args> constexpr __forceinline void info(Args&&... args)
 		{
 			if (level < level::info) return;
-			write({ clock::now(), write_strings(std::forward<Args>(args))..., newline{} });
+			write({ clock::now(), convert_arg(std::forward<Args>(args))..., new_line{} });
 		}
 		template <typename... Args> constexpr __forceinline void warn(Args&&... args)
 		{
 			if (level < level::warn) return;
-			write({ clock::now(), write_strings(std::forward<Args>(args))..., newline{} });
+			write({ clock::now(), convert_arg(std::forward<Args>(args))..., new_line{} });
 		}
 		template <typename... Args> constexpr __forceinline void debug(Args&&... args)
 		{
 			if (level < level::debug) return;
-			write({ clock::now(), write_strings(std::forward<Args>(args))..., newline{} });
+			write({ clock::now(), convert_arg(std::forward<Args>(args))..., new_line{} });
 		}
 		template <typename... Args> constexpr __forceinline void trace(Args&&... args)
 		{
 			if (level < level::trace) return;
-			write({ clock::now(), write_strings(std::forward<Args>(args))..., newline{} });
+			write({ clock::now(), convert_arg(std::forward<Args>(args))..., new_line{} });
 		}
 
 		void set_to_none() { set_level(level::none); }
@@ -72,62 +70,54 @@ namespace spry
 			messages.write(std::move(args));
 		}
 
+		__forceinline uint8_t* write(const uint8_t* buffer, size_t buffer_size)
+		{
+			static std::atomic<uint64_t> page_counter{ 0 };
+			static thread_local memory_mapped_file strings{ ("strings_for_" + filename).data(), page_counter++ };
+
+			if (strings.free_space() < buffer_size) strings.flip_to_page(page_counter++);
+			return strings.write(buffer, buffer_size);
+		}
+
 		template <typename T> 
-		__forceinline std::enable_if_t<!std::is_pointer_v<T>, T&&> write_strings(T&& arg)
+		__forceinline std::enable_if_t<!is_char_type_pointer_v<T>, T&&> convert_arg(T&& arg)
 		{
 			return std::forward<T>(arg);
 		}
 
-		__forceinline const char* write_strings(std::string& string)
+		__forceinline const char* convert_arg(std::string& string)
 		{
 			auto data = string.c_str();
-			return write_strings(data);
+			return convert_arg(data);
 		}
 		
-		__forceinline const char* write_strings(const std::string& string)
+		__forceinline const char* convert_arg(const std::string& string)
 		{
 			auto data = string.c_str();
-			return write_strings(data);
+			return convert_arg(data);
 		}
 
-		/*template <typename T, size_t N>
+		template <typename char_t, size_t N>
 		constexpr __forceinline
-		std::enable_if_t<is_small_string_literal_v<T&&, N>, small_string_literal<T>> write_strings(T(&string)[N])
-		{
-			return { string };
-		}*/
-
-		template <typename T, size_t N>
-		constexpr __forceinline
-		std::enable_if_t<is_small_string_literal_v<T&&, N>, small_string_literal<T>> write_strings(const T(&string)[N])
+		std::enable_if_t<is_small_string_literal_v<char_t&&, N>, small_string_literal<char_t>> 
+		convert_arg(const char_t(&string)[N])
 		{
 			return { string };
 		}
 
-		/*template <typename T, size_t N> 
+		template <typename char_t, size_t N>
 		constexpr __forceinline 
-		std::enable_if_t<is_large_string_literal_v<T&&, N>, string_hash> write_strings(T(&string)[N])
+		std::enable_if_t<is_large_string_literal_v<char_t&&, N>, string_hash> convert_arg(char_t(&string)[N])
 		{
-			return { std::hash<const char*>{}(string) };
-		}*/
-
-		template <typename T, size_t N>
-		constexpr __forceinline 
-		std::enable_if_t<is_large_string_literal_v<T&&, N>, string_hash> write_strings(const T(&string)[N])
-		{
-			return { std::hash<const char*>{}(string) };
+			return { std::hash<const char_t*>{}(string) };
 		}
 
-		template <typename T>
-		__forceinline std::enable_if_t<std::is_pointer_v<T>, T> write_strings(const T& string)
+		template <typename char_t>
+		__forceinline std::enable_if_t<is_char_type_pointer_v<char_t>, const char_t> convert_arg(char_t& string)
 		{
-			static std::atomic<uint64_t> page_counter{ 0 };
-			static thread_local memory_mapped_file strings{ (filename + "strings").data(), page_counter++ };
-
 			const auto length = std::strlen(string);
-			if (strings.free_space() < length) strings.flip_to_page(page_counter++);
-			const auto pointer = strings.write(reinterpret_cast<const uint8_t*>(string), length);
-			return reinterpret_cast<const char*>(pointer);
+			const auto pointer = write(reinterpret_cast<const uint8_t*>(string), length);
+			return reinterpret_cast<const char_t>(pointer);
 		}
 
 		std::string filename;

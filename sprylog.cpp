@@ -3,7 +3,7 @@
 
 #include <windows.h>
 #include <algorithm>
-#include "ooplog.h"
+#include "sprylog.h"
 
 #include <iostream>
 
@@ -28,8 +28,10 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	log.set_to_info();
 	//remove init penalty
 	std::string thismightwork = "yay";
+	const std::string thismightwork2 = "yay";
 	auto data = thismightwork.c_str();
-	
+	auto data2 = thismightwork.data();
+	log.info("small", "long literal", data, thismightwork, thismightwork2, data2, 7);
 	log.info("asdfasdfasdf", 0);
 	log.info(data);
 	log.info(thismightwork);
