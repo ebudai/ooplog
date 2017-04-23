@@ -14,11 +14,13 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 {
     UNREFERENCED_PARAMETER(hPrevInstance);
     UNREFERENCED_PARAMETER(lpCmdLine);
+	UNREFERENCED_PARAMETER(hInstance);
+	UNREFERENCED_PARAMETER(nCmdShow);
 
 	using namespace std;
 	using namespace std::chrono;
 
-	void* base = GetModuleHandle(nullptr);
+	//void* base = GetModuleHandle(nullptr);
 
 	auto strings = spry::extract_strings_from_process<char>();
 

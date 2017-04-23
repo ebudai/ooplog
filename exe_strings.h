@@ -11,21 +11,23 @@ namespace spry
 {
 	template <typename char_t> static std::unordered_set<std::basic_string<char_t>> extract_strings_from_process()
 	{
+		static constexpr size_t reserve_size = 256;
+
 		std::string filename;
-		filename.reserve(256);
-		auto success = GetModuleFileNameA(nullptr, filename.data(), 256);
+		filename.reserve(reserve_size);
+		auto success = GetModuleFileNameA(nullptr, filename.data(), reserve_size);
 		if (!success) throw std::exception("GetModuleFileName", GetLastError());
 		
 		size_t filesize = std::experimental::filesystem::file_size(filename);
-		char_t* start = new char_t[filesize / sizeof(char_t)];
-		const char_t* end = start + (filesize / sizeof(char_t));
+		auto start = std::make_unique<char_t[]>(filesize / sizeof(char_t));
+		const char_t* end = std::next(start.get(), filesize / sizeof(char_t));
 
 		{
 			std::ifstream file{ filename, std::ios::binary };
-			file.read(reinterpret_cast<char*>(start), filesize);
+			file.read(reinterpret_cast<char*>(start.get()), filesize);
 		}
 
-		std::unordered_set<std::basic_string<char_t>> strings{ 64 };
+		std::unordered_set<std::basic_string<char_t>> strings{ reserve_size };
 
 		auto is_printable = [&](const char_t* string, size_t length)
 		{
@@ -37,7 +39,7 @@ namespace spry
 			return true;
 		};
 
-		const char_t* string = start;
+		const char_t* string = start.get();
 
 		while (string != end)
 		{	

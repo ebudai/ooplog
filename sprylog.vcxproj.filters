@@ -4,6 +4,8 @@
     <ClInclude Include="memory_mapped_file.h" />
     <ClInclude Include="exe_strings.h" />
     <ClInclude Include="sprylog.h" />
+    <ClInclude Include="char_traits.h" />
+    <ClInclude Include="argument.h" />
   </ItemGroup>
   <ItemGroup>
     <Text Include="todo.txt" />

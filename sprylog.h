@@ -5,8 +5,10 @@
 
 #include "memory_mapped_file.h"
 #include "exe_strings.h"
+#include "char_traits.h"
 #include <atomic>
 #include <mutex>
+#include <string>
 #include <Windows.h>
 
 namespace spry
@@ -47,12 +49,12 @@ namespace spry
 			write({ clock::now(), convert_arg(std::forward<Args>(args))..., new_line{} });
 		}
 
-		void set_to_none() { set_level(level::none); }
-		void set_to_fatal() { set_level(level::fatal); }
-		void set_to_info() { set_level(level::info); }
-		void set_to_warn() { set_level(level::warn); }
-		void set_to_debug() { set_level(level::debug); }
-		void set_to_trace() { set_level(level::trace); }
+		void set_to_none()	{ level = level::none; }
+		void set_to_fatal()	{ level = level::fatal; }
+		void set_to_info()	{ level = level::info; }
+		void set_to_warn()	{ level = level::warn; }
+		void set_to_debug() { level = level::debug; }
+		void set_to_trace() { level = level::trace; }
 
 	private:
 
@@ -113,7 +115,7 @@ namespace spry
 		}
 
 		template <typename char_t>
-		__forceinline std::enable_if_t<is_char_type_pointer_v<char_t>, const char_t> convert_arg(char_t& string)
+		constexpr __forceinline std::enable_if_t<is_char_type_pointer_v<char_t>, const char_t> convert_arg(char_t& string)
 		{
 			const auto length = std::strlen(string);
 			const auto pointer = write(reinterpret_cast<const uint8_t*>(string), length);

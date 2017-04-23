@@ -162,6 +162,8 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="argument.h" />
+    <ClInclude Include="char_traits.h" />
     <ClInclude Include="exe_strings.h" />
     <ClInclude Include="memory_mapped_file.h" />
     <ClInclude Include="sprylog.h" />
